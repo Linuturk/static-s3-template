@@ -17,7 +17,7 @@
       "Default": "error.html"
     },
     "LogExpiration": {
-      "Type": "Integer",
+      "Type": "Number",
       "Description": "The number of days to retain access logs.",
       "Default": "30"
     }
@@ -43,7 +43,9 @@
       "Properties": {
         "BucketName": { "Fn::Join": [ "", [ "www.", { "Ref": "DomainName" } ] ] },
         "WebsiteConfiguration": {
-          "RedirectAllRequestsTo": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] }
+          "RedirectAllRequestsTo": {
+            "HostName": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] }
+          }
         }
       }
     },
@@ -51,6 +53,7 @@
       "Type": "AWS::S3::Bucket",
       "Properties": {
         "BucketName": { "Fn::Join": [ "", [ "logs.", { "Ref": "DomainName" } ] ] },
+        "AccessControl": "LogDeliveryWrite",
         "LifecycleConfiguration": {
           "Rules": [
             {
@@ -69,15 +72,17 @@
           "Enabled": "true",
           "DefaultRootObject": { "Ref": "Index" },
           "Logging": {
-            "Bucket": { "Ref": "LogBucket" },
+            "Bucket": { "Fn::GetAtt": [ "LogBucket", "DomainName" ] },
             "Prefix": "cdn"
           },
           "Origins": [
             {
               "DomainName": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] },
               "Id": "S3Origin",
-              "S3OriginConfig": {
-                "OriginAccessIdentity": { "Fn::Join": [ "", [ "origin-access-identity/cloudfront/", { "Ref": "RootBucket" } ] ] }
+              "CustomOriginConfig": {
+                "HTTPPort": "80",
+                "HTTPSPort": "443",
+		"OriginProtocolPolicy": "match-viewer"
               }
             }
           ],

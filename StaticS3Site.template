@@ -1,0 +1,110 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Creates the necessary resources to host a static site in S3.",
+  "Parameters": {
+    "DomainName": {
+      "Type": "String",
+      "Description": "The root domain name of your site. (example.com)"
+    },
+    "Index": {
+      "Type": "String",
+      "Description": "The index document for your site.",
+      "Default": "index.html"
+    },
+    "Error": {
+      "Type": "String",
+      "Description": "The error document for your site.",
+      "Default": "error.html"
+    },
+    "LogExpiration": {
+      "Type": "Integer",
+      "Description": "The number of days to retain access logs.",
+      "Default": "30"
+    }
+  },
+  "Resources": {
+    "RootBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Ref": "DomainName" },
+        "AccessControl": "PublicRead",
+        "WebsiteConfiguration": {
+          "IndexDocument": { "Ref": "Index" },
+          "ErrorDocument": { "Ref": "Error" }
+        },
+        "LoggingConfiguration": {
+          "DestinationBucketName": { "Ref": "LogBucket" },
+          "LogFilePrefix": "root"
+        }
+      }
+    },
+    "wwwBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Fn::Join": [ "", [ "www.", { "Ref": "DomainName" } ] ] },
+        "WebsiteConfiguration": {
+          "RedirectAllRequestsTo": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] }
+        }
+      }
+    },
+    "LogBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": { "Fn::Join": [ "", [ "logs.", { "Ref": "DomainName" } ] ] },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Status": "Enabled",
+              "ExpirationInDays": { "Ref": "LogExpiration" }
+            }
+          ]
+        }
+      }
+    },
+    "CloudFront": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Comment": "Point to a S3 Static Site.",
+          "Enabled": "true",
+          "DefaultRootObject": { "Ref": "Index" },
+          "Logging": {
+            "Bucket": { "Ref": "LogBucket" },
+            "Prefix": "cdn"
+          },
+          "Origins": [
+            {
+              "DomainName": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] },
+              "Id": "S3Origin",
+              "S3OriginConfig": {
+                "OriginAccessIdentity": { "Fn::Join": [ "", [ "origin-access-identity/cloudfront/", { "Ref": "RootBucket" } ] ] }
+              },
+              "CustomOriginConfig": {
+                "HTTPPort": "80",
+                "HTTPSPort": "443"
+              }
+            }
+          ],
+          "Aliases": [
+            { "Ref": "DomainName" },
+            { "Fn::Join": [ "", [ "www.", { "Ref": "DomainName" } ] ] }
+          ],
+          "DefaultCacheBehavior": {
+            "Compress": "true",
+            "TargetOriginId": "S3Origin",
+            "ViewerProtocolPolicy": "allow-all",
+            "ForwardedValues": {
+              "QueryString": "true"
+            }
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "CloudFrontURL": {
+      "Value": { "Fn::GetAtt": [ "CloudFront", "DomainName" ] },
+      "Description": "URL for the CloudFront Distribution."
+    }
+  }
+}

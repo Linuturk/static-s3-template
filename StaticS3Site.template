@@ -78,10 +78,6 @@
               "Id": "S3Origin",
               "S3OriginConfig": {
                 "OriginAccessIdentity": { "Fn::Join": [ "", [ "origin-access-identity/cloudfront/", { "Ref": "RootBucket" } ] ] }
-              },
-              "CustomOriginConfig": {
-                "HTTPPort": "80",
-                "HTTPSPort": "443"
               }
             }
           ],

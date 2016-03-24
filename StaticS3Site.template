@@ -1,6 +1,18 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "Creates the necessary resources to host a static site in S3.",
+  "Mappings" : {
+    "RegionMap" : {
+      "us-east-1" : { "S3hostedzoneID" : "Z3AQBSTGFYJSTF", "websiteendpoint" : "s3-website-us-east-1.amazonaws.com" },
+      "us-west-1" : { "S3hostedzoneID" : "Z2F56UZL2M1ACD", "websiteendpoint" : "s3-website-us-west-1.amazonaws.com" },
+      "us-west-2" : { "S3hostedzoneID" : "Z3BJ6K6RIION7M", "websiteendpoint" : "s3-website-us-west-2.amazonaws.com" },
+      "eu-west-1" : { "S3hostedzoneID" : "Z1BKCTXD74EZPE", "websiteendpoint" : "s3-website-eu-west-1.amazonaws.com" },
+      "ap-southeast-1" : { "S3hostedzoneID" : "Z3O0J2DXBE1FTB", "websiteendpoint" : "s3-website-ap-southeast-1.amazonaws.com" },
+      "ap-southeast-2" : { "S3hostedzoneID" : "Z1WCIGYICN2BYD", "websiteendpoint" : "s3-website-ap-southeast-2.amazonaws.com" },
+      "ap-northeast-1" : { "S3hostedzoneID" : "Z2M4EHUR26P7ZW", "websiteendpoint" : "s3-website-ap-northeast-1.amazonaws.com" },
+      "sa-east-1" : { "S3hostedzoneID" : "Z31GFT0UA1I2HV", "websiteendpoint" : "s3-website-sa-east-1.amazonaws.com" }
+    }
+  },
   "Parameters": {
     "DomainName": {
       "Type": "String",
@@ -20,6 +32,11 @@
       "Type": "Number",
       "Description": "The number of days to retain access logs.",
       "Default": "30"
+    },
+    "TTL": {
+      "Type": "Number",
+      "Description": "The number of seconds CloudFront should cache content.",
+      "Default": "86400"
     }
   },
   "Resources": {
@@ -27,14 +44,13 @@
       "Type": "AWS::S3::Bucket",
       "Properties": {
         "BucketName": { "Ref": "DomainName" },
-        "AccessControl": "PublicRead",
         "WebsiteConfiguration": {
           "IndexDocument": { "Ref": "Index" },
           "ErrorDocument": { "Ref": "Error" }
         },
         "LoggingConfiguration": {
           "DestinationBucketName": { "Ref": "LogBucket" },
-          "LogFilePrefix": "root"
+          "LogFilePrefix": "root/"
         }
       }
     },
@@ -44,7 +60,7 @@
         "BucketName": { "Fn::Join": [ "", [ "www.", { "Ref": "DomainName" } ] ] },
         "WebsiteConfiguration": {
           "RedirectAllRequestsTo": {
-            "HostName": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] }
+            "HostName": { "Fn::Join": [ ".", [ { "Ref": "RootBucket" }, {"Fn::FindInMap" : [ "RegionMap", { "Ref" : "AWS::Region" }, "websiteendpoint"]}]]}
           }
         }
       }
@@ -73,16 +89,16 @@
           "DefaultRootObject": { "Ref": "Index" },
           "Logging": {
             "Bucket": { "Fn::GetAtt": [ "LogBucket", "DomainName" ] },
-            "Prefix": "cdn"
+            "Prefix": "cdn/"
           },
           "Origins": [
             {
-              "DomainName": { "Fn::GetAtt": [ "RootBucket", "DomainName" ] },
+              "DomainName": { "Fn::Join": [ ".", [ { "Ref": "RootBucket" }, {"Fn::FindInMap" : [ "RegionMap", { "Ref" : "AWS::Region" }, "websiteendpoint"]}]]},
               "Id": "S3Origin",
               "CustomOriginConfig": {
                 "HTTPPort": "80",
                 "HTTPSPort": "443",
-		"OriginProtocolPolicy": "match-viewer"
+                "OriginProtocolPolicy": "match-viewer"
               }
             }
           ],
@@ -92,12 +108,28 @@
           ],
           "DefaultCacheBehavior": {
             "Compress": "true",
+	    "DefaultTTL": { "Ref": "TTL" },
             "TargetOriginId": "S3Origin",
             "ViewerProtocolPolicy": "allow-all",
             "ForwardedValues": {
               "QueryString": "true"
             }
           }
+        }
+      }
+    },
+    "BucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": { "Ref": "RootBucket" },
+        "PolicyDocument": {
+          "Statement": [{
+            "Sid": "Allow Public Access to All Objects",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "RootBucket" } , "/*" ]]}
+          }]
         }
       }
     }
